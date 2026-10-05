@@ -124,7 +124,7 @@ where the dataset has test and neighbors.
 
 ## Acknowledgements
 
-- [SuperKMeans](https://github.com/cwida/SuperKMeans) 🙇
+- [SuperKMeans](https://github.com/cwida/SuperKMeans)
 - [pi.dev](https://pi.dev/)
 - [Opair](https://www.opairdev.org/)
 - [deepseek-flash / deepseek-v4-pro](https://platform.deepseek.com/)
