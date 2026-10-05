@@ -1,6 +1,6 @@
 # superkmeans-go
 
-A Go implementation of SuperKMeans, a fast k-means clustering method for
+A Go implementation of [SuperKMeans](https://github.com/cwida/SuperKMeans), a fast k-means clustering method for
 high dimensional vector embeddings.
 It aims to be faster than a naive Lloyd's k-means at similar quality.
 
@@ -47,25 +47,25 @@ import (
 )
 
 func main() {
- n, d, k := 10000, 128, 100
- data := make([]float32, n*d)
- // fill data row-major
+   n, d, k := 10000, 128, 100
+   data := make([]float32, n*d)
+   // fill data row-major
 
- cfg := superkmeans.DefaultConfig()
- cfg.Seed = 42
- cfg.Iters = 10
+   cfg := superkmeans.DefaultConfig()
+   cfg.Seed = 42
+   cfg.Iters = 10
 
- km, err := superkmeans.New(k, d, &cfg)
- if err != nil {
-  panic(err)
- }
- model, err := km.Fit(data, n)
- if err != nil {
-  panic(err)
- }
+   km, err := superkmeans.New(k, d, &cfg)
+   if err != nil {
+      panic(err)
+   }
+   model, err := km.Fit(data, n)
+   if err != nil {
+      panic(err)
+   }
 
- fmt.Println(len(model.Centroids), model.WCSS)
- fmt.Println(model.Assignments[:5])
+   fmt.Println(len(model.Centroids), model.WCSS)
+   fmt.Println(model.Assignments[:5])
 }
 ```
 
@@ -75,7 +75,7 @@ func main() {
 stats. `FitCentroids` returns centroids only and skips the final assignment
 pass. It is the training-time benchmark path.
 
-## Benchmark
+## Bench
 
 The standalone benchmark reads ann-benchmarks HDF5 files or generates synthetic
 data.
