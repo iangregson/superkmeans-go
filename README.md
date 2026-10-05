@@ -121,3 +121,11 @@ where the dataset has test and neighbors.
 
 - The HDF5 reader accepts only the ann-benchmarks layout.
 - Accelerate / OpenBLAS would be faster.
+
+## Acknowledgements
+
+- [SuperKMeans](https://github.com/cwida/SuperKMeans) 🙇
+- [pi.dev](https://pi.dev/)
+- [Opair](https://www.opairdev.org/)
+- [deepseek-flash / deepseek-v4-pro](https://platform.deepseek.com/)
+
