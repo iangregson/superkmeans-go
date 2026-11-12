@@ -20,8 +20,8 @@ import (
 func main() {
 	var dataPath, outPath string
 	var n, d, k, seed, iters, threads, runs int
-	var sampling, explore float64
-	var hier, noRecall, naive bool
+	var sampling, explore, emepochs float64
+	var hier, noRecall, naive, emeans bool
 	flag.StringVar(&dataPath, "data", "", "path to ann-benchmarks HDF5 file")
 	flag.StringVar(&outPath, "out", "", "append JSONL results here (default stdout)")
 	flag.IntVar(&n, "n", 20000, "synthetic rows")
@@ -36,6 +36,8 @@ func main() {
 	flag.BoolVar(&hier, "hier", false, "hierarchical clustering")
 	flag.BoolVar(&noRecall, "no-recall", false, "skip recall and full assignment")
 	flag.BoolVar(&naive, "naive", false, "run exact Lloyd's baseline")
+	flag.BoolVar(&emeans, "emeans", false, "also run e-means (FAISS port)")
+	flag.Float64Var(&emepochs, "emepochs", 5, "e-means epochs")
 	flag.Parse()
 
 	var data []float32
@@ -154,6 +156,10 @@ func main() {
 			fatal(err)
 		}
 
+		if emeans {
+			runEMeans(enc, data, test, neighbors, n, d, k, seed, threads, run, dataset, angular, explore, emepochs, noRecall)
+		}
+
 		if naive {
 			nt := usedThreads(threads)
 			t0 := time.Now()
@@ -183,6 +189,106 @@ func main() {
 		}
 
 	}
+}
+
+// runEMeans trains the e-means port and reports fit time, exact L2 WCSS of
+// the closing centroids from a separate assignment pass, and recall. On
+// angular datasets e-means runs spherical on L2-normalized data; WCSS and
+// recall still use plain L2 for comparability.
+func runEMeans(enc *json.Encoder, data, test []float32, neighbors []int32, n, d, k, seed, threads, run int, dataset string, angular bool, explore, emepochs float64, noRecall bool) {
+	train := data
+	if angular {
+		train = make([]float32, len(data))
+		copy(train, data)
+		normalizeRowsF32(train, n, d)
+	}
+	cfg := superkmeans.DefaultEMeansConfig()
+	cfg.NEpochs = emepochs
+	cfg.Seed = uint64(seed)
+	cfg.Threads = threads
+	cfg.Spherical = angular
+	em, err := superkmeans.NewEMeans(k, d, &cfg)
+	if err != nil {
+		fatal(err)
+	}
+	t0 := time.Now()
+	model, err := em.Fit(train, n)
+	if err != nil {
+		fatal(err)
+	}
+	fit := time.Since(t0).Seconds()
+
+	// Exact assignment against the closing centroids (L2 for comparability).
+	a0 := time.Now()
+	trainAssign := make([]uint32, n)
+	dists := make([]float32, n)
+	exact := &superkmeans.Model{K: k, D: d, Centroids: model.Centroids}
+	if err := exact.Assign(data, n, trainAssign, dists); err != nil {
+		fatal(err)
+	}
+	assignSeconds := time.Since(a0).Seconds()
+	var wcss float64
+	for _, v := range dists {
+		wcss += float64(v)
+	}
+
+	rec := -1.0
+	if test != nil && len(neighbors) > 0 && !noRecall {
+		rec = computeRecall(test, model.Centroids, trainAssign, neighbors, k, d, explore)
+	}
+
+	out := map[string]any{
+		"dataset":        dataset,
+		"n":              n,
+		"d":              d,
+		"k":              k,
+		"impl":           "emeans",
+		"angular":        angular,
+		"threads":        threads,
+		"iters":          emepochs,
+		"sampling":       1.0,
+		"run":            run + 1,
+		"fit_seconds":    fit,
+		"wcss":           wcss,
+		"moving_wcss":    model.WCSS,
+		"assign_seconds": assignSeconds,
+		"recall":         rec,
+		"explore":        explore,
+		"batch_size":     model.Recipe.BatchSize,
+		"alpha0":         model.Recipe.Alpha0,
+		"batch_law":      model.Recipe.BatchLaw,
+		"splits":         model.NSplits,
+	}
+	if err := enc.Encode(out); err != nil {
+		fatal(err)
+	}
+}
+
+func normalizeRowsF32(data []float32, n, d int) {
+	var wg sync.WaitGroup
+	workers := runtime.GOMAXPROCS(0)
+	wg.Add(workers)
+	for w := 0; w < workers; w++ {
+		lo := w * n / workers
+		hi := (w + 1) * n / workers
+		go func(lo, hi int) {
+			defer wg.Done()
+			for i := lo; i < hi; i++ {
+				row := data[i*d : i*d+d]
+				var s float64
+				for _, v := range row {
+					s += float64(v) * float64(v)
+				}
+				if s > 0 {
+					inv := float32(1 / math.Sqrt(s))
+					for j := range row {
+						row[j] *= inv
+					}
+				}
+			}
+		}(lo, hi)
+	}
+	wg.Wait()
 }
 
 func usedThreads(t int) int {
